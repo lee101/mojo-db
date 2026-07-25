@@ -1,0 +1,53 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  crypto-vectors:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: prefix-dev/setup-pixi@v0.8.1
+        with:
+          cache: true
+      # The crypto vectors need no database, so they gate every change.
+      - name: Run crypto test vectors
+        run: |
+          pixi run mojo build tests/test_crypto.mojo -I src -o test_crypto
+          ./test_crypto
+
+  postgres-integration:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: mojodb
+          POSTGRES_PASSWORD: mojo_test_pw
+          POSTGRES_DB: mojodb_test
+          # Force SCRAM so CI exercises the SASL path, not just trust.
+          POSTGRES_HOST_AUTH_METHOD: scram-sha-256
+          POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 10s
+          --health-timeout 5s --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: prefix-dev/setup-pixi@v0.8.1
+        with:
+          cache: true
+      - name: Seed fixtures
+        run: |
+          PGPASSWORD=mojo_test_pw psql -h 127.0.0.1 -U mojodb -d mojodb_test -c "
+            CREATE TABLE metrics (id bigserial primary key, name text not null,
+                                  value double precision, ok boolean);
+            INSERT INTO metrics (name, value, ok) VALUES
+              ('alpha', 1.5, true), ('beta', -2.25, false), ('gamma', NULL, true);"
+      - name: Run driver against PostgreSQL
+        run: |
+          pixi run mojo build examples/pg_scram.mojo -I src -o pg_scram
+          ./pg_scram

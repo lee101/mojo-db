@@ -1,0 +1,5 @@
+.pixi/
+*.mojopkg
+/build/
+/tmp/
+*.log
