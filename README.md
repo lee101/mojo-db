@@ -109,6 +109,33 @@ The driver examples need a reachable PostgreSQL:
 mojo build examples/pg_smoke.mojo -I src -o /tmp/pg_smoke && /tmp/pg_smoke
 ```
 
+## Benchmark
+
+`pixi run bench` builds a small C ABI wrapper, warms every operation, runs nine
+repeated samples, and reports the median. The pixi task holds
+`/tmp/mojo-bench.lock` for the whole run and pins the process to CPUs 0-7.
+Python `bytearray` inputs are passed directly to Mojo as spans, without an
+intermediate copy. The baseline is CPython's OpenSSL-backed `hashlib`, the
+closest upstream implementation of these kernels.
+
+Measured on 2026-07-29 with a 2.30 GHz Intel Xeon E5-2697 v4, Mojo
+1.0.0b3.dev2026072406, and Python 3.14.6:
+
+| Operation | Input size | mojo-db | Python `hashlib` | Speedup |
+|---|---:|---:|---:|---:|
+| SHA-256 | 1 MiB | 13.434 ms | 3.696 ms | 0.28x |
+| SHA-256, parallel copy | 16 MiB | 186.659 ms | 50.160 ms | 0.27x |
+| MD5 | 1 MiB | 8.746 ms | 2.212 ms | 0.25x |
+| HMAC-SHA-256 | 64 KiB | 1.331 ms | 203.716 us | 0.15x |
+| PBKDF2-HMAC-SHA-256 | 4096 iterations | 19.068 ms | 2.431 ms | 0.13x |
+
+A speedup below 1.0x means mojo-db is slower. OpenSSL wins every row here.
+Large SHA-256 and all MD5 input copies, HMAC pad/copy loops, PBKDF2 XOR
+accumulation, and SCRAM signature comparison use SIMD with scalar tails.
+SHA-256 compression and PBKDF2 iterations remain serial because each block or
+iteration depends on the previous one. Only SHA-256 input copies of at least
+16 MiB are parallelized, with at most eight workers.
+
 ## Design notes
 
 **Blocking sockets, not an event loop.** Database access is request/response
@@ -134,6 +161,6 @@ Issues and pull requests welcome, particularly for TLS, MySQL, and binary-format
 decoding. Please include a test vector or a reproducible query for anything
 protocol-related.
 
-## Licence
+## License
 
-Apache-2.0. See [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE).

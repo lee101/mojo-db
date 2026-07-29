@@ -5,13 +5,16 @@ new. It is here because `password_encryption = md5` servers still exist and a
 driver that cannot talk to them is not a complete driver.
 """
 
+from std.sys.info import simd_width_of as simdwidthof
+
 comptime MD5_BLOCK: Int = 64
+
 
 def _shifts() -> List[Int]:
     return [7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22, 5, 9, 14, 20, 5, 9, 14, 20, 5, 9, 14, 20, 5, 9, 14, 20, 4, 11, 16, 23, 4, 11, 16, 23, 4, 11, 16, 23, 4, 11, 16, 23, 6, 10, 15, 21, 6, 10, 15, 21, 6, 10, 15, 21, 6, 10, 15, 21]
 
+
 def _sines() -> List[Int]:
-    """floor(2^32 * abs(sin(i+1)))."""
     return [0xD76AA478, 0xE8C7B756, 0x242070DB, 0xC1BDCEEE, 0xF57C0FAF, 0x4787C62A, 0xA8304613, 0xFD469501, 0x698098D8, 0x8B44F7AF, 0xFFFF5BB1, 0x895CD7BE, 0x6B901122, 0xFD987193, 0xA679438E, 0x49B40821, 0xF61E2562, 0xC040B340, 0x265E5A51, 0xE9B6C7AA, 0xD62F105D, 0x02441453, 0xD8A1E681, 0xE7D3FBC8, 0x21E1CDE6, 0xC33707D6, 0xF4D50D87, 0x455A14ED, 0xA9E3E905, 0xFCEFA3F8, 0x676F02D9, 0x8D2A4C8A, 0xFFFA3942, 0x8771F681, 0x6D9D6122, 0xFDE5380C, 0xA4BEEA44, 0x4BDECFA9, 0xF6BB4B60, 0xBEBFBC70, 0x289B7EC6, 0xEAA127FA, 0xD4EF3085, 0x04881D05, 0xD9D4D039, 0xE6DB99E5, 0x1FA27CF8, 0xC4AC5665, 0xF4292244, 0x432AFF97, 0xAB9423A7, 0xFC93A039, 0x655B59C3, 0x8F0CCC92, 0xFFEFF47D, 0x85845DD1, 0x6FA87E4F, 0xFE2CE6E0, 0xA3014314, 0x4E0811A1, 0xF7537E82, 0xBD3AF235, 0x2AD7D2BB, 0xEB86D391]
 
 
@@ -25,16 +28,28 @@ def md5(message: Span[UInt8, _]) -> List[UInt8]:
     var c0: UInt32 = 0x98BADCFE
     var d0: UInt32 = 0x10325476
 
-    # MD5 is little-endian, unlike every network protocol it is used inside.
-    var padded = List[UInt8](capacity=len(message) + 72)
-    for i in range(len(message)):
-        padded.append(message[i])
-    padded.append(0x80)
-    while len(padded) % MD5_BLOCK != 56:
-        padded.append(0)
+    var padded_length = (
+        (len(message) + 1 + 8 + MD5_BLOCK - 1) // MD5_BLOCK
+    ) * MD5_BLOCK
+    var padded = List[UInt8](length=padded_length, fill=0)
+    comptime W = simdwidthof[DType.uint8]()
+    var src = message.unsafe_ptr()
+    var dst = Span(padded).unsafe_ptr()
+    var offset = 0
+    while offset + W <= len(message):
+        dst.store[alignment=1](
+            offset, src.load[width=W, alignment=1](offset)
+        )
+        offset += W
+    while offset < len(message):
+        padded[offset] = message[offset]
+        offset += 1
+    padded[len(message)] = 0x80
     var bits = UInt64(len(message)) * 8
     for i in range(8):
-        padded.append(UInt8((bits >> UInt64(8 * i)) & 0xFF))
+        padded[padded_length - 8 + i] = UInt8(
+            (bits >> UInt64(8 * i)) & 0xFF
+        )
 
     var shifts = _shifts()
     var sines = _sines()
@@ -58,8 +73,8 @@ def md5(message: Span[UInt8, _]) -> List[UInt8]:
         var d = d0
 
         for i in range(64):
-            var f: UInt32 = 0
-            var g: Int = 0
+            var f: UInt32
+            var g: Int
             if i < 16:
                 f = (b & c) | ((~b) & d)
                 g = i

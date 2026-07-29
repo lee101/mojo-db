@@ -7,7 +7,17 @@ which is the only way these tests can catch a wrong implementation.
 
 from db.crypto.base64 import decode, encode
 from db.crypto.md5 import md5_hex, postgres_md5_password
-from db.crypto.sha256 import hmac_sha256, pbkdf2_sha256, sha256_hex, to_hex
+from db.crypto.sha256 import (
+    PARALLEL_COPY_THRESHOLD,
+    constant_time_equal,
+    hmac_sha256,
+    pbkdf2_sha256,
+    sha256_hex,
+    to_hex,
+    uses_parallel_copy,
+    xor_in_place,
+)
+from std.sys.info import simd_width_of as simdwidthof
 
 
 def check(name: StringSlice, got: StringSlice, want: StringSlice) -> Int:
@@ -68,6 +78,47 @@ def test_sha256() raises -> Int:
         "41edece42d63e8d9bf515a9ba6932e1c20cbc9f5a5d134645adb5db1b9737ea3",
     )
 
+    return bad
+
+
+def test_optimized_paths() raises -> Int:
+    var bad = 0
+    print("Optimized paths")
+    comptime W = simdwidthof[DType.uint8]()
+    var left = List[UInt8](length=W + 3, fill=0xA5)
+    var right = List[UInt8](length=W + 3, fill=0x5A)
+    xor_in_place(left, Span(right))
+    for i in range(len(left)):
+        if left[i] != 0xFF:
+            bad += 1
+    bad += check("SIMD XOR scalar tail", String(bad), "0")
+    var same = left.copy()
+    bad += check(
+        "SIMD equality scalar tail",
+        String(constant_time_equal(Span(left), Span(same))),
+        "True",
+    )
+    same[W + 2] = 0
+    bad += check(
+        "SIMD equality mismatch",
+        String(constant_time_equal(Span(left), Span(same))),
+        "False",
+    )
+    bad += check(
+        "parallel threshold below",
+        String(uses_parallel_copy(PARALLEL_COPY_THRESHOLD - 1)),
+        "False",
+    )
+    bad += check(
+        "parallel threshold at boundary",
+        String(uses_parallel_copy(PARALLEL_COPY_THRESHOLD)),
+        "True",
+    )
+    bad += check(
+        "parallel SHA-256 copy",
+        sha256_hex(Span(repeated(97, PARALLEL_COPY_THRESHOLD))),
+        "5b6ff2e19d0da0fe323061018fc381393492884e74af8296c81ab9cb2694783a",
+    )
     return bad
 
 
@@ -215,6 +266,7 @@ def main() raises:
     print("mojo-db crypto vectors")
     var failures = 0
     failures += test_sha256()
+    failures += test_optimized_paths()
     failures += test_md5()
     failures += test_hmac()
     failures += test_pbkdf2()

@@ -4,8 +4,11 @@ channels = ["https://conda.modular.com/max-nightly", "conda-forge"]
 name = "mojo-db"
 platforms = ["linux-64"]
 version = "0.1.0"
+license = "MIT"
 
 [tasks]
+bench = "flock /tmp/mojo-bench.lock taskset -c 0-7 python3 bench/bench.py"
+test = "mojo build tests/test_crypto.mojo -I src -o /tmp/mojo_db_test_crypto && /tmp/mojo_db_test_crypto"
 
 [dependencies]
 mojo = "==1.0.0b3.dev2026072406"

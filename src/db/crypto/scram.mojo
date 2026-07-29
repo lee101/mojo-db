@@ -16,7 +16,12 @@ accepting anything - and it costs one HMAC.
 from std.ffi import external_call
 
 from db.crypto.base64 import decode, encode
-from db.crypto.sha256 import hmac_sha256, pbkdf2_sha256, sha256
+from db.crypto.sha256 import (
+    constant_time_equal,
+    hmac_sha256,
+    pbkdf2_sha256,
+    sha256,
+)
 
 comptime GS2_HEADER = "n,,"
 comptime GS2_HEADER_B64 = "biws"  # base64("n,,"), fixed since we never bind
@@ -141,10 +146,7 @@ struct ScramClient(Movable):
         if len(received) != len(self.server_signature):
             raise Error("SCRAM server signature has the wrong length")
 
-        var mismatch = 0
-        for i in range(len(received)):
-            mismatch |= Int(received[i] ^ self.server_signature[i])
-        if mismatch != 0:
+        if not constant_time_equal(Span(received), Span(self.server_signature)):
             raise Error("SCRAM server signature mismatch; server is not authentic")
 
         self.finished = True
