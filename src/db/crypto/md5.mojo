@@ -53,7 +53,7 @@ def md5(message: Span[UInt8, _]) -> List[UInt8]:
 
     var shifts = _shifts()
     var sines = _sines()
-    var m = InlineArray[UInt32, 16](fill=0)
+    var m = List[UInt32](length=16, fill=0)
     var blocks = len(padded) // MD5_BLOCK
 
     for block in range(blocks):
@@ -100,7 +100,7 @@ def md5(message: Span[UInt8, _]) -> List[UInt8]:
         d0 += d
 
     var out = List[UInt8](capacity=16)
-    var state = InlineArray[UInt32, 4](fill=0)
+    var state = List[UInt32](length=4, fill=0)
     state[0] = a0
     state[1] = b0
     state[2] = c0

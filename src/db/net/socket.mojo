@@ -49,7 +49,7 @@ def parse_ipv4(text: StringSlice) -> Tuple[Bool, UInt32]:
     Returns (ok, packed) where packed holds the octets in memory order, ready
     to copy straight into sin_addr.
     """
-    var octets = InlineArray[UInt32, 4](fill=0)
+    var octets = List[UInt32](length=4, fill=0)
     var index = 0
     var current: UInt32 = 0
     var digits = 0

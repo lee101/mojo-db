@@ -7,8 +7,10 @@ version = "0.1.0"
 license = "MIT"
 
 [tasks]
+build = "mkdir -p build && mojo build --emit shared-lib bench/bench_ffi.mojo -I src -o build/libmojo_db.so"
 bench = "flock /tmp/mojo-bench.lock taskset -c 0-7 python3 bench/bench.py"
 test = "mojo build tests/test_crypto.mojo -I src -o /tmp/mojo_db_test_crypto && /tmp/mojo_db_test_crypto"
 
 [dependencies]
+max = "==26.7.0.dev2026092605"
 mojo = "==1.2.0.dev2026092605"
